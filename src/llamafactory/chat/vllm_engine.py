@@ -26,6 +26,7 @@ from ..model import load_config, load_tokenizer
 from ..model.model_utils.quantization import QuantizationMethod
 from ..model.model_utils.visual import LlavaMultiModalProjectorForYiVLForVLLM
 from .base_engine import BaseEngine, Response
+import json
 
 
 if is_pillow_available():
@@ -47,6 +48,9 @@ logger = get_logger(__name__)
 
 
 class VllmEngine(BaseEngine):
+
+    vllm_lora_models: Optional[Dict[str, str]] = None
+
     def __init__(
         self,
         model_args: "ModelArguments",
@@ -69,7 +73,10 @@ class VllmEngine(BaseEngine):
         self.tokenizer.padding_side = "left"
         self.template = get_template_and_fix_tokenizer(self.tokenizer, data_args)
         self.generating_args = generating_args.to_dict()
-
+        self.adapter_name_or_path = model_args.adapter_name_or_path
+        if model_args.vllm_lora_models is not None:
+            self.vllm_lora_models = json.loads(model_args.vllm_lora_models)
+        
         engine_args = {
             "model": model_args.model_name_or_path,
             "trust_remote_code": True,
@@ -81,8 +88,10 @@ class VllmEngine(BaseEngine):
             "disable_log_stats": True,
             "disable_log_requests": True,
             "enforce_eager": model_args.vllm_enforce_eager,
-            "enable_lora": model_args.adapter_name_or_path is not None,
+            "enable_lora": self.adapter_name_or_path is not None or self.vllm_lora_models is not None,
             "max_lora_rank": model_args.vllm_max_lora_rank,
+            "max_loras": model_args.vllm_max_loras,
+            "max_cpu_loras": model_args.vllm_max_cpu_loras,
         }
 
         if getattr(config, "is_yi_vl_derived_model", None):
@@ -93,11 +102,19 @@ class VllmEngine(BaseEngine):
 
         self.model = AsyncLLMEngine.from_engine_args(
             AsyncEngineArgs(**engine_args))
-        if model_args.adapter_name_or_path is not None:
-            self.lora_request = LoRARequest(
-                "default", 1, model_args.adapter_name_or_path[0])
-        else:
-            self.lora_request = None
+    
+    def get_lora_request(self, model:str = 'default') -> Optional["LoRARequest"]:
+        if self.adapter_name_or_path is not None:
+            return LoRARequest(
+                "default", 1, self.adapter_name_or_path[0])
+
+
+        if self.vllm_lora_models is not None:
+            for index, (key, value) in enumerate(self.vllm_lora_models.items(), start=1):
+                if key == model:
+                    return LoRARequest(key, index, value)
+        return None
+
 
     async def _generate(
         self,
@@ -123,6 +140,7 @@ class VllmEngine(BaseEngine):
         top_p: Optional[float] = input_kwargs.pop("top_p", None)
         top_k: Optional[float] = input_kwargs.pop("top_k", None)
         num_return_sequences: int = input_kwargs.pop("num_return_sequences", 1)
+        model: str = input_kwargs.pop("model", 'default')
         repetition_penalty: Optional[float] = input_kwargs.pop(
             "repetition_penalty", None)
         length_penalty: Optional[float] = input_kwargs.pop(
@@ -194,7 +212,7 @@ class VllmEngine(BaseEngine):
                     "multi_modal_data": multi_modal_data},
             sampling_params=sampling_params,
             request_id=request_id,
-            lora_request=self.lora_request,
+            lora_request=self.get_lora_request(model),
         )
         return result_generator
 

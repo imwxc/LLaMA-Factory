@@ -140,6 +140,21 @@ class VllmArguments:
         default=32,
         metadata={"help": "Maximum rank of all LoRAs in the vLLM engine."},
     )
+    vllm_lora_models: Optional[str] = field(
+        default='',
+        metadata={"help": (
+            "lora models to load. Use commas to separate multiple models.",
+            'examples: {"model1":"path_to_model1", "model2":"path_to_model2"}'
+        )},
+    )
+    vllm_max_loras: int = field(
+        default=1,
+        metadata={"help": "Max number of LoRAs in a single batch in the vLLM engine."},
+    )
+    vllm_max_cpu_loras: int = field(
+        default=1,
+        metadata={"help": "Maximum number of LoRAs to store in CPU memory. Must be >= than max_num_seqs. Defaults to max_num_seqs."},
+    )
 
 
 @dataclass
