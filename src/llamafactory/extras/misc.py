@@ -17,9 +17,10 @@
 
 import gc
 import os
-from typing import TYPE_CHECKING, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Literal, Sequence, Tuple, Union
 
 import torch
+import torch.distributed as dist
 import transformers.dynamic_module_utils
 from transformers import InfNanRemoveLogitsProcessor, LogitsProcessorList
 from transformers.dynamic_module_utils import get_relative_imports
@@ -32,7 +33,7 @@ from transformers.utils import (
 )
 from transformers.utils.versions import require_version
 
-from .logging import get_logger
+from . import logging
 
 
 _is_fp16_available = is_torch_npu_available() or is_torch_cuda_available()
@@ -48,7 +49,7 @@ if TYPE_CHECKING:
     from ..hparams import ModelArguments
 
 
-logger = get_logger(__name__)
+logger = logging.get_logger(__name__)
 
 
 class AverageMeter:
@@ -76,14 +77,30 @@ def check_dependencies() -> None:
     r"""
     Checks the version of the required packages.
     """
-    if os.environ.get("DISABLE_VERSION_CHECK", "0").lower() in ["true", "1"]:
-        logger.warning("Version checking has been disabled, may lead to unexpected behaviors.")
-    else:
-        require_version("transformers>=4.41.2,<=4.46.1", "To fix: pip install transformers>=4.41.2,<=4.46.1")
-        require_version("datasets>=2.16.0,<=3.0.2", "To fix: pip install datasets>=2.16.0,<=3.0.2")
-        require_version("accelerate>=0.34.0,<=1.0.1", "To fix: pip install accelerate>=0.34.0,<=1.0.1")
-        require_version("peft>=0.11.1,<=0.12.0", "To fix: pip install peft>=0.11.1,<=0.12.0")
-        require_version("trl>=0.8.6,<=0.9.6", "To fix: pip install trl>=0.8.6,<=0.9.6")
+    if os.getenv("DISABLE_VERSION_CHECK", "0").lower() in ["true", "1"]:
+        logger.warning_once("Version checking has been disabled, may lead to unexpected behaviors.")
+        return
+
+    require_version("transformers>=4.41.2,<=4.46.1", "To fix: pip install transformers>=4.41.2,<=4.46.1")
+    require_version("datasets>=2.16.0,<=3.1.0", "To fix: pip install datasets>=2.16.0,<=3.1.0")
+    require_version("accelerate>=0.34.0,<=1.0.1", "To fix: pip install accelerate>=0.34.0,<=1.0.1")
+    require_version("peft>=0.11.1,<=0.12.0", "To fix: pip install peft>=0.11.1,<=0.12.0")
+    require_version("trl>=0.8.6,<=0.9.6", "To fix: pip install trl>=0.8.6,<=0.9.6")
+
+
+def calculate_tps(dataset: Sequence[Dict[str, Any]], metrics: Dict[str, float], stage: Literal["sft", "rm"]) -> float:
+    r"""
+    Calculates effective tokens per second.
+    """
+    effective_token_num = 0
+    for data in dataset:
+        if stage == "sft":
+            effective_token_num += len(data["input_ids"])
+        elif stage == "rm":
+            effective_token_num += len(data["chosen_input_ids"]) + len(data["rejected_input_ids"])
+
+    result = effective_token_num * metrics["epoch"] / metrics["train_runtime"]
+    return result / dist.get_world_size() if dist.is_initialized() else result
 
 
 def count_parameters(model: "torch.nn.Module") -> Tuple[int, int]:
@@ -212,7 +229,7 @@ def skip_check_imports() -> None:
     r"""
     Avoids flash attention import error in custom model files.
     """
-    if os.environ.get("FORCE_CHECK_IMPORTS", "0").lower() not in ["true", "1"]:
+    if os.getenv("FORCE_CHECK_IMPORTS", "0").lower() not in ["true", "1"]:
         transformers.dynamic_module_utils.check_imports = get_relative_imports
 
 
@@ -258,8 +275,12 @@ def try_download_model_from_other_hub(model_args: "ModelArguments") -> str:
 
 
 def use_modelscope() -> bool:
-    return os.environ.get("USE_MODELSCOPE_HUB", "0").lower() in ["true", "1"]
+    return os.getenv("USE_MODELSCOPE_HUB", "0").lower() in ["true", "1"]
 
 
 def use_openmind() -> bool:
-    return os.environ.get("USE_OPENMIND_HUB", "0").lower() in ["true", "1"]
+    return os.getenv("USE_OPENMIND_HUB", "0").lower() in ["true", "1"]
+
+
+def use_ray() -> bool:
+    return os.getenv("USE_RAY", "0").lower() in ["true", "1"]

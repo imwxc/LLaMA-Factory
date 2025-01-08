@@ -21,7 +21,7 @@ Level:
 Dependency graph:
   main:
     transformers>=4.41.2,<=4.46.1
-    datasets>=2.16.0,<=3.0.2
+    datasets>=2.16.0,<=3.1.0
     accelerate>=0.34.0,<=1.0.1
     peft>=0.11.1,<=0.12.0
     trl>=0.8.6,<=0.9.6
@@ -30,7 +30,7 @@ Dependency graph:
   longlora:
     transformers>=4.41.2,<=4.46.1
   packing:
-    transformers>=4.41.2,<=4.46.1
+    transformers>=4.43.0,<=4.46.1
 
 Disable version checking: DISABLE_VERSION_CHECK=1
 Enable VRAM recording: RECORD_VRAM=1

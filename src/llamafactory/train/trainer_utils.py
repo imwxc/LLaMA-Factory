@@ -17,7 +17,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
+from collections.abc import Mapping
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import Trainer
@@ -28,25 +30,30 @@ from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 from transformers.trainer_pt_utils import get_parameter_names
 from typing_extensions import override
 
+from ..extras import logging
 from ..extras.constants import IGNORE_INDEX
-from ..extras.logging import get_logger
-from ..extras.packages import is_galore_available
+from ..extras.packages import is_galore_available, is_ray_available
 from ..hparams import FinetuningArguments, ModelArguments
 from ..model import find_all_linear_modules, load_model, load_tokenizer, load_valuehead_params
 
 
 if is_galore_available():
-    from galore_torch import GaLoreAdafactor, GaLoreAdamW, GaLoreAdamW8bit
+    from galore_torch import GaLoreAdafactor, GaLoreAdamW, GaLoreAdamW8bit  # type: ignore
+
+
+if is_ray_available():
+    from ray.train import RunConfig, ScalingConfig
+    from ray.train.torch import TorchTrainer
 
 
 if TYPE_CHECKING:
-    from transformers import PreTrainedModel, Seq2SeqTrainingArguments
+    from transformers import PreTrainedModel, TrainerCallback
     from trl import AutoModelForCausalLMWithValueHead
 
-    from ..hparams import DataArguments
+    from ..hparams import DataArguments, RayArguments, TrainingArguments
 
 
-logger = get_logger(__name__)
+logger = logging.get_logger(__name__)
 
 
 class DummyOptimizer(torch.optim.Optimizer):
@@ -74,7 +81,7 @@ def create_modelcard_and_push(
     trainer: "Trainer",
     model_args: "ModelArguments",
     data_args: "DataArguments",
-    training_args: "Seq2SeqTrainingArguments",
+    training_args: "TrainingArguments",
     finetuning_args: "FinetuningArguments",
 ) -> None:
     kwargs = {
@@ -116,7 +123,7 @@ def create_ref_model(
         ref_model = load_model(
             tokenizer, ref_model_args, ref_finetuning_args, is_trainable=False, add_valuehead=add_valuehead
         )
-        logger.info(f"Created reference model from {finetuning_args.ref_model}")
+        logger.info_rank0(f"Created reference model from {finetuning_args.ref_model}")
     else:
         if finetuning_args.finetuning_type == "lora":
             ref_model = None
@@ -127,7 +134,7 @@ def create_ref_model(
             ref_model = load_model(
                 tokenizer, ref_model_args, ref_finetuning_args, is_trainable=False, add_valuehead=add_valuehead
             )
-            logger.info("Created reference model from the model itself.")
+            logger.info_rank0("Created reference model from the model itself.")
 
     return ref_model
 
@@ -140,7 +147,7 @@ def create_reward_model(
     """
     if finetuning_args.reward_model_type == "api":
         assert finetuning_args.reward_model.startswith("http"), "Please provide full url."
-        logger.info(f"Use reward server {finetuning_args.reward_model}")
+        logger.info_rank0(f"Use reward server {finetuning_args.reward_model}")
         return finetuning_args.reward_model
     elif finetuning_args.reward_model_type == "lora":
         model.pretrained_model.load_adapter(finetuning_args.reward_model, "reward")
@@ -157,7 +164,7 @@ def create_reward_model(
         model.register_buffer(
             "default_head_bias", torch.zeros_like(vhead_params["v_head.summary.bias"]), persistent=False
         )
-        logger.info(f"Loaded adapter weights of reward model from {finetuning_args.reward_model}")
+        logger.info_rank0(f"Loaded adapter weights of reward model from {finetuning_args.reward_model}")
         return None
     else:
         reward_model_args = ModelArguments.copyfrom(
@@ -171,8 +178,8 @@ def create_reward_model(
         reward_model = load_model(
             tokenizer, reward_model_args, reward_finetuning_args, is_trainable=False, add_valuehead=True
         )
-        logger.info(f"Loaded full weights of reward model from {finetuning_args.reward_model}")
-        logger.warning("Please ensure the ppo model and reward model share SAME tokenizer and vocabulary.")
+        logger.info_rank0(f"Loaded full weights of reward model from {finetuning_args.reward_model}")
+        logger.warning_rank0("Please ensure the ppo model and reward model share SAME tokenizer and vocabulary.")
         return reward_model
 
 
@@ -187,7 +194,7 @@ def _get_decay_parameter_names(model: "PreTrainedModel") -> List[str]:
 
 def _create_galore_optimizer(
     model: "PreTrainedModel",
-    training_args: "Seq2SeqTrainingArguments",
+    training_args: "TrainingArguments",
     finetuning_args: "FinetuningArguments",
 ) -> "torch.optim.Optimizer":
     if len(finetuning_args.galore_target) == 1 and finetuning_args.galore_target[0] == "all":
@@ -265,13 +272,13 @@ def _create_galore_optimizer(
         ]
         optimizer = optim_class(param_groups, **optim_kwargs)
 
-    logger.info("Using GaLore optimizer, may cause hanging at the start of training, wait patiently.")
+    logger.info_rank0("Using GaLore optimizer, may cause hanging at the start of training, wait patiently.")
     return optimizer
 
 
 def _create_loraplus_optimizer(
     model: "PreTrainedModel",
-    training_args: "Seq2SeqTrainingArguments",
+    training_args: "TrainingArguments",
     finetuning_args: "FinetuningArguments",
 ) -> "torch.optim.Optimizer":
     default_lr = training_args.learning_rate
@@ -305,13 +312,13 @@ def _create_loraplus_optimizer(
         dict(params=param_dict["embedding"], lr=embedding_lr, weight_decay=training_args.weight_decay),
     ]
     optimizer = optim_class(param_groups, **optim_kwargs)
-    logger.info(f"Using LoRA+ optimizer with loraplus lr ratio {finetuning_args.loraplus_lr_ratio:.2f}.")
+    logger.info_rank0(f"Using LoRA+ optimizer with loraplus lr ratio {finetuning_args.loraplus_lr_ratio:.2f}.")
     return optimizer
 
 
 def _create_badam_optimizer(
     model: "PreTrainedModel",
-    training_args: "Seq2SeqTrainingArguments",
+    training_args: "TrainingArguments",
     finetuning_args: "FinetuningArguments",
 ) -> "torch.optim.Optimizer":
     decay_params, nodecay_params = [], []
@@ -330,7 +337,7 @@ def _create_badam_optimizer(
     ]
 
     if finetuning_args.badam_mode == "layer":
-        from badam import BlockOptimizer
+        from badam import BlockOptimizer  # type: ignore
 
         base_optimizer = optim_class(param_groups, **optim_kwargs)
         optimizer = BlockOptimizer(
@@ -343,14 +350,14 @@ def _create_badam_optimizer(
             verbose=finetuning_args.badam_verbose,
             ds_zero3_enabled=is_deepspeed_zero3_enabled(),
         )
-        logger.info(
+        logger.info_rank0(
             f"Using BAdam optimizer with layer-wise update, switch mode is {finetuning_args.badam_switch_mode}, "
             f"switch block every {finetuning_args.badam_switch_interval} steps, "
             f"default start block is {finetuning_args.badam_start_block}"
         )
 
     elif finetuning_args.badam_mode == "ratio":
-        from badam import BlockOptimizerRatio
+        from badam import BlockOptimizerRatio  # type: ignore
 
         assert finetuning_args.badam_update_ratio > 1e-6
         optimizer = BlockOptimizerRatio(
@@ -362,7 +369,7 @@ def _create_badam_optimizer(
             include_embedding=False,
             **optim_kwargs,
         )
-        logger.info(
+        logger.info_rank0(
             f"Using BAdam optimizer with ratio-based update, update ratio is {finetuning_args.badam_update_ratio}, "
             f"mask mode is {finetuning_args.badam_mask_mode}"
         )
@@ -372,9 +379,9 @@ def _create_badam_optimizer(
 
 def _create_adam_mini_optimizer(
     model: "PreTrainedModel",
-    training_args: "Seq2SeqTrainingArguments",
+    training_args: "TrainingArguments",
 ) -> "torch.optim.Optimizer":
-    from adam_mini import Adam_mini
+    from adam_mini import Adam_mini  # type: ignore
 
     hidden_size = getattr(model.config, "hidden_size", None)
     num_q_head = getattr(model.config, "num_attention_heads", None)
@@ -391,13 +398,13 @@ def _create_adam_mini_optimizer(
         n_heads=num_q_head,
         n_kv_heads=num_kv_head,
     )
-    logger.info("Using Adam-mini optimizer.")
+    logger.info_rank0("Using Adam-mini optimizer.")
     return optimizer
 
 
 def create_custom_optimizer(
     model: "PreTrainedModel",
-    training_args: "Seq2SeqTrainingArguments",
+    training_args: "TrainingArguments",
     finetuning_args: "FinetuningArguments",
 ) -> Optional["torch.optim.Optimizer"]:
     if finetuning_args.use_galore:
@@ -414,7 +421,7 @@ def create_custom_optimizer(
 
 
 def create_custom_scheduler(
-    training_args: "Seq2SeqTrainingArguments",
+    training_args: "TrainingArguments",
     num_training_steps: int,
     optimizer: Optional["torch.optim.Optimizer"] = None,
 ) -> None:
@@ -457,3 +464,69 @@ def get_batch_logps(
     labels[labels == label_pad_token_id] = 0  # dummy token
     per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
     return (per_token_logps * loss_mask).sum(-1), loss_mask.sum(-1)
+
+
+def nested_detach(
+    tensors: Union["torch.Tensor", List["torch.Tensor"], Tuple["torch.Tensor"], Dict[str, "torch.Tensor"]],
+    clone: bool = False,
+):
+    r"""
+    Detach `tensors` (even if it's a nested list/tuple/dict of tensors).
+    """
+    if isinstance(tensors, (list, tuple)):
+        return type(tensors)(nested_detach(t, clone=clone) for t in tensors)
+    elif isinstance(tensors, Mapping):
+        return type(tensors)({k: nested_detach(t, clone=clone) for k, t in tensors.items()})
+
+    if isinstance(tensors, torch.Tensor):
+        if clone:
+            return tensors.detach().clone()
+        else:
+            return tensors.detach()
+    else:
+        return tensors
+
+
+def get_swanlab_callback(finetuning_args: "FinetuningArguments") -> "TrainerCallback":
+    r"""
+    Gets the callback for logging to SwanLab.
+    """
+    import swanlab  # type: ignore
+    from swanlab.integration.transformers import SwanLabCallback  # type: ignore
+
+    if finetuning_args.swanlab_api_key is not None:
+        swanlab.login(api_key=finetuning_args.swanlab_api_key)
+
+    swanlab_callback = SwanLabCallback(
+        project=finetuning_args.swanlab_project,
+        workspace=finetuning_args.swanlab_workspace,
+        experiment_name=finetuning_args.swanlab_run_name,
+        mode=finetuning_args.swanlab_mode,
+        config={"Framework": "🦙LlamaFactory"},
+    )
+    return swanlab_callback
+
+
+def get_ray_trainer(
+    training_function: Callable,
+    train_loop_config: Dict[str, Any],
+    ray_args: "RayArguments",
+) -> "TorchTrainer":
+    if not ray_args.use_ray:
+        raise ValueError("Ray was not enabled. Please set `USE_RAY=1` to enable ray.")
+
+    trainer = TorchTrainer(
+        training_function,
+        train_loop_config=train_loop_config,
+        scaling_config=ScalingConfig(
+            num_workers=ray_args.ray_num_workers,
+            resources_per_worker=ray_args.resources_per_worker,
+            placement_strategy=ray_args.placement_strategy,
+            use_gpu=True,
+        ),
+        run_config=RunConfig(
+            name=ray_args.ray_run_name,
+            storage_path=Path("./saves").absolute().as_posix(),
+        ),
+    )
+    return trainer
