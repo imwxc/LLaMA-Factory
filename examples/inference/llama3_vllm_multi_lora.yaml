@@ -1,7 +1,7 @@
-model_name_or_path: meta-llama/Meta-Llama-3-8B-Instruct
-template: llama3
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+template: qwen
 infer_backend: vllm
 vllm_enforce_eager: true
 trust_remote_code: true
-vllm_gpu_util: 0.98
-vllm_config: '{"max_loras":1,"max_cpu_loras":8}'
+vllm_gpu_util: 0.999
+vllm_config: '{"max_loras":3,"max_cpu_loras":8,"enable_lora":true}'

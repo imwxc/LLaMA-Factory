@@ -160,8 +160,7 @@ class VllmArguments:
     )
     vllm_config: Optional[Union[dict, str]] = field(
         default=None,
-        metadata={"help": "Config to initialize the vllm engine. Please use JSON strings.",
-                  "examples": '{"max_loras":1,"max_cpu_loras":1}'
+        metadata={"help": 'Config to initialize the vllm engine. Please use JSON strings. examples: "{\"max_loras\":1,\"max_cpu_loras\":1}"',
                   },
     )
 

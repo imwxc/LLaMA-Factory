@@ -5,6 +5,15 @@
   "alpaca_en_demo": {
     "file_name": "alpaca_en_demo.json"
   },
+  "spack": {
+    "file_name": "spack.json"
+  },
+  "jerry_mouse": {
+    "file_name": "jerry_mouse.json"
+  },
+  "tom": {
+    "file_name": "tom.json"
+  },
   "alpaca_zh_demo": {
     "file_name": "alpaca_zh_demo.json"
   },

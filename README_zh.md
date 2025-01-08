@@ -605,6 +605,8 @@ docker exec -it llamafactory bash
 API_PORT=8000 llamafactory-cli api examples/inference/llama3_vllm.yaml
 
 # 开启multi-lora
+# 可选 国内网络下载模型
+HF_ENDPOINT="https://hf-mirror.com" \
 VLLM_LORA_MODEL_CONFIG='{"model1":"path_to_model1", "model2":"path_to_model2"}' \
 API_PORT=8000 llamafactory-cli api examples/inference/llama3_vllm_multi_lora.yaml
 ```
