@@ -78,7 +78,7 @@ class VllmEngine(BaseEngine):
         self.adapter_name_or_path = model_args.adapter_name_or_path
         if model_args.vllm_lora_models is not None:
             self.vllm_lora_models = json.loads(model_args.vllm_lora_models)
-        
+
         engine_args = {
             "model": model_args.model_name_or_path,
             "trust_remote_code": model_args.trust_remote_code,
@@ -92,8 +92,6 @@ class VllmEngine(BaseEngine):
             "enforce_eager": model_args.vllm_enforce_eager,
             "enable_lora": self.adapter_name_or_path is not None or self.vllm_lora_models is not None,
             "max_lora_rank": model_args.vllm_max_lora_rank,
-            "max_loras": model_args.vllm_max_loras,
-            "max_cpu_loras": model_args.vllm_max_cpu_loras,
         }
         if self.template.mm_plugin.__class__.__name__ != "BasePlugin":
             engine_args["limit_mm_per_prompt"] = {"image": 4, "video": 2}
@@ -110,19 +108,17 @@ class VllmEngine(BaseEngine):
 
         self.model = AsyncLLMEngine.from_engine_args(
             AsyncEngineArgs(**engine_args))
-    
-    def get_lora_request(self, model:str = 'default') -> Optional["LoRARequest"]:
+
+    def get_lora_request(self, model: str = 'default') -> Optional["LoRARequest"]:
         if self.adapter_name_or_path is not None:
             return LoRARequest(
                 "default", 1, self.adapter_name_or_path[0])
-
 
         if self.vllm_lora_models is not None:
             for index, (key, value) in enumerate(self.vllm_lora_models.items(), start=1):
                 if key == model:
                     return LoRARequest(key, index, value)
         return None
-
 
     async def _generate(
         self,
