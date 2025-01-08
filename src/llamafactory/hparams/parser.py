@@ -15,55 +15,66 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
+import json
 import os
 import sys
-from typing import Any, Dict, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import transformers
-from transformers import HfArgumentParser, Seq2SeqTrainingArguments
+import yaml
+from transformers import HfArgumentParser
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.training_args import ParallelMode
 from transformers.utils import is_torch_bf16_gpu_available, is_torch_npu_available
 from transformers.utils.versions import require_version
 
+from ..extras import logging
 from ..extras.constants import CHECKPOINT_NAMES
-from ..extras.logging import get_logger
 from ..extras.misc import check_dependencies, get_current_device
 from .data_args import DataArguments
 from .evaluation_args import EvaluationArguments
 from .finetuning_args import FinetuningArguments
 from .generating_args import GeneratingArguments
 from .model_args import ModelArguments
+from .training_args import RayArguments, TrainingArguments
 
 
-logger = get_logger(__name__)
-
+logger = logging.get_logger(__name__)
 
 check_dependencies()
 
 
-_TRAIN_ARGS = [ModelArguments, DataArguments, Seq2SeqTrainingArguments, FinetuningArguments, GeneratingArguments]
-_TRAIN_CLS = Tuple[ModelArguments, DataArguments, Seq2SeqTrainingArguments, FinetuningArguments, GeneratingArguments]
+_TRAIN_ARGS = [ModelArguments, DataArguments, TrainingArguments, FinetuningArguments, GeneratingArguments]
+_TRAIN_CLS = Tuple[ModelArguments, DataArguments, TrainingArguments, FinetuningArguments, GeneratingArguments]
 _INFER_ARGS = [ModelArguments, DataArguments, FinetuningArguments, GeneratingArguments]
 _INFER_CLS = Tuple[ModelArguments, DataArguments, FinetuningArguments, GeneratingArguments]
 _EVAL_ARGS = [ModelArguments, DataArguments, EvaluationArguments, FinetuningArguments]
 _EVAL_CLS = Tuple[ModelArguments, DataArguments, EvaluationArguments, FinetuningArguments]
 
 
-def _parse_args(parser: "HfArgumentParser", args: Optional[Dict[str, Any]] = None) -> Tuple[Any]:
+def read_args(args: Optional[Union[Dict[str, Any], List[str]]] = None) -> Union[Dict[str, Any], List[str]]:
     if args is not None:
-        return parser.parse_dict(args)
+        return args
 
     if len(sys.argv) == 2 and (sys.argv[1].endswith(".yaml") or sys.argv[1].endswith(".yml")):
-        return parser.parse_yaml_file(os.path.abspath(sys.argv[1]))
+        return yaml.safe_load(Path(sys.argv[1]).absolute().read_text())
+    elif len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
+        return json.loads(Path(sys.argv[1]).absolute().read_text())
+    else:
+        return sys.argv[1:]
 
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        return parser.parse_json_file(os.path.abspath(sys.argv[1]))
 
-    (*parsed_args, unknown_args) = parser.parse_args_into_dataclasses(return_remaining_strings=True)
+def _parse_args(
+    parser: "HfArgumentParser", args: Optional[Union[Dict[str, Any], List[str]]] = None, allow_extra_keys: bool = False
+) -> Tuple[Any]:
+    args = read_args(args)
+    if isinstance(args, dict):
+        return parser.parse_dict(args, allow_extra_keys=allow_extra_keys)
+
+    (*parsed_args, unknown_args) = parser.parse_args_into_dataclasses(args=args, return_remaining_strings=True)
 
     if unknown_args:
         print(parser.format_help())
@@ -73,8 +84,8 @@ def _parse_args(parser: "HfArgumentParser", args: Optional[Dict[str, Any]] = Non
     return (*parsed_args,)
 
 
-def _set_transformers_logging(log_level: Optional[int] = logging.INFO) -> None:
-    transformers.utils.logging.set_verbosity(log_level)
+def _set_transformers_logging() -> None:
+    transformers.utils.logging.set_verbosity_info()
     transformers.utils.logging.enable_default_handler()
     transformers.utils.logging.enable_explicit_format()
 
@@ -104,15 +115,19 @@ def _verify_model_args(
             raise ValueError("Quantized model only accepts a single adapter. Merge them first.")
 
     if data_args.template == "yi" and model_args.use_fast_tokenizer:
-        logger.warning("We should use slow tokenizer for the Yi models. Change `use_fast_tokenizer` to False.")
+        logger.warning_rank0("We should use slow tokenizer for the Yi models. Change `use_fast_tokenizer` to False.")
         model_args.use_fast_tokenizer = False
 
 
 def _check_extra_dependencies(
     model_args: "ModelArguments",
     finetuning_args: "FinetuningArguments",
-    training_args: Optional["Seq2SeqTrainingArguments"] = None,
+    training_args: Optional["TrainingArguments"] = None,
 ) -> None:
+    if os.getenv("DISABLE_VERSION_CHECK", "0").lower() in ["true", "1"]:
+        logger.warning_once("Version checking has been disabled, may lead to unexpected behaviors.")
+        return
+
     if model_args.use_unsloth:
         require_version("unsloth", "Please install unsloth: https://github.com/unslothai/unsloth")
 
@@ -123,7 +138,7 @@ def _check_extra_dependencies(
         require_version("mixture-of-depth>=1.1.6", "To fix: pip install mixture-of-depth>=1.1.6")
 
     if model_args.infer_backend == "vllm":
-        require_version("vllm>=0.4.3,<=0.6.3", "To fix: pip install vllm>=0.4.3,<=0.6.3")
+        require_version("vllm>=0.4.3,<0.6.7", "To fix: pip install vllm>=0.4.3,<0.6.7")
 
     if finetuning_args.use_galore:
         require_version("galore_torch", "To fix: pip install galore_torch")
@@ -143,22 +158,28 @@ def _check_extra_dependencies(
         require_version("rouge_chinese", "To fix: pip install rouge-chinese")
 
 
-def _parse_train_args(args: Optional[Dict[str, Any]] = None) -> _TRAIN_CLS:
+def _parse_train_args(args: Optional[Union[Dict[str, Any], List[str]]] = None) -> _TRAIN_CLS:
     parser = HfArgumentParser(_TRAIN_ARGS)
     return _parse_args(parser, args)
 
 
-def _parse_infer_args(args: Optional[Dict[str, Any]] = None) -> _INFER_CLS:
+def _parse_infer_args(args: Optional[Union[Dict[str, Any], List[str]]] = None) -> _INFER_CLS:
     parser = HfArgumentParser(_INFER_ARGS)
     return _parse_args(parser, args)
 
 
-def _parse_eval_args(args: Optional[Dict[str, Any]] = None) -> _EVAL_CLS:
+def _parse_eval_args(args: Optional[Union[Dict[str, Any], List[str]]] = None) -> _EVAL_CLS:
     parser = HfArgumentParser(_EVAL_ARGS)
     return _parse_args(parser, args)
 
 
-def get_train_args(args: Optional[Dict[str, Any]] = None) -> _TRAIN_CLS:
+def get_ray_args(args: Optional[Union[Dict[str, Any], List[str]]] = None) -> RayArguments:
+    parser = HfArgumentParser(RayArguments)
+    (ray_args,) = _parse_args(parser, args, allow_extra_keys=True)
+    return ray_args
+
+
+def get_train_args(args: Optional[Union[Dict[str, Any], List[str]]] = None) -> _TRAIN_CLS:
     model_args, data_args, training_args, finetuning_args, generating_args = _parse_train_args(args)
 
     # Setup logging
@@ -261,7 +282,7 @@ def get_train_args(args: Optional[Dict[str, Any]] = None) -> _TRAIN_CLS:
         raise ValueError("Unsloth is incompatible with DeepSpeed ZeRO-3.")
 
     if data_args.neat_packing and not data_args.packing:
-        logger.warning("`neat_packing` requires `packing` is True. Change `packing` to True.")
+        logger.warning_rank0("`neat_packing` requires `packing` is True. Change `packing` to True.")
         data_args.packing = True
 
     _verify_model_args(model_args, data_args, finetuning_args)
@@ -274,22 +295,26 @@ def get_train_args(args: Optional[Dict[str, Any]] = None) -> _TRAIN_CLS:
         and model_args.resize_vocab
         and finetuning_args.additional_target is None
     ):
-        logger.warning("Remember to add embedding layers to `additional_target` to make the added tokens trainable.")
+        logger.warning_rank0(
+            "Remember to add embedding layers to `additional_target` to make the added tokens trainable."
+        )
 
     if training_args.do_train and model_args.quantization_bit is not None and (not model_args.upcast_layernorm):
-        logger.warning("We recommend enable `upcast_layernorm` in quantized training.")
+        logger.warning_rank0("We recommend enable `upcast_layernorm` in quantized training.")
 
     if training_args.do_train and (not training_args.fp16) and (not training_args.bf16):
-        logger.warning("We recommend enable mixed precision training.")
+        logger.warning_rank0("We recommend enable mixed precision training.")
 
     if training_args.do_train and finetuning_args.use_galore and not finetuning_args.pure_bf16:
-        logger.warning("Using GaLore with mixed precision training may significantly increases GPU memory usage.")
+        logger.warning_rank0(
+            "Using GaLore with mixed precision training may significantly increases GPU memory usage."
+        )
 
     if (not training_args.do_train) and model_args.quantization_bit is not None:
-        logger.warning("Evaluating model in 4/8-bit mode may cause lower scores.")
+        logger.warning_rank0("Evaluating model in 4/8-bit mode may cause lower scores.")
 
     if (not training_args.do_train) and finetuning_args.stage == "dpo" and finetuning_args.ref_model is None:
-        logger.warning("Specify `ref_model` for computing rewards at evaluation.")
+        logger.warning_rank0("Specify `ref_model` for computing rewards at evaluation.")
 
     # Post-process training arguments
     if (
@@ -297,13 +322,13 @@ def get_train_args(args: Optional[Dict[str, Any]] = None) -> _TRAIN_CLS:
         and training_args.ddp_find_unused_parameters is None
         and finetuning_args.finetuning_type == "lora"
     ):
-        logger.warning("`ddp_find_unused_parameters` needs to be set as False for LoRA in DDP training.")
+        logger.warning_rank0("`ddp_find_unused_parameters` needs to be set as False for LoRA in DDP training.")
         training_args.ddp_find_unused_parameters = False
 
     if finetuning_args.stage in ["rm", "ppo"] and finetuning_args.finetuning_type in ["full", "freeze"]:
         can_resume_from_checkpoint = False
         if training_args.resume_from_checkpoint is not None:
-            logger.warning("Cannot resume from checkpoint in current stage.")
+            logger.warning_rank0("Cannot resume from checkpoint in current stage.")
             training_args.resume_from_checkpoint = None
     else:
         can_resume_from_checkpoint = True
@@ -323,15 +348,15 @@ def get_train_args(args: Optional[Dict[str, Any]] = None) -> _TRAIN_CLS:
 
         if last_checkpoint is not None:
             training_args.resume_from_checkpoint = last_checkpoint
-            logger.info(f"Resuming training from {training_args.resume_from_checkpoint}.")
-            logger.info("Change `output_dir` or use `overwrite_output_dir` to avoid.")
+            logger.info_rank0(f"Resuming training from {training_args.resume_from_checkpoint}.")
+            logger.info_rank0("Change `output_dir` or use `overwrite_output_dir` to avoid.")
 
     if (
         finetuning_args.stage in ["rm", "ppo"]
         and finetuning_args.finetuning_type == "lora"
         and training_args.resume_from_checkpoint is not None
     ):
-        logger.warning(
+        logger.warning_rank0(
             "Add {} to `adapter_name_or_path` to resume training from checkpoint.".format(
                 training_args.resume_from_checkpoint
             )
@@ -364,7 +389,7 @@ def get_train_args(args: Optional[Dict[str, Any]] = None) -> _TRAIN_CLS:
     return model_args, data_args, training_args, finetuning_args, generating_args
 
 
-def get_infer_args(args: Optional[Dict[str, Any]] = None) -> _INFER_CLS:
+def get_infer_args(args: Optional[Union[Dict[str, Any], List[str]]] = None) -> _INFER_CLS:
     model_args, data_args, finetuning_args, generating_args = _parse_infer_args(args)
 
     _set_transformers_logging()
@@ -397,7 +422,7 @@ def get_infer_args(args: Optional[Dict[str, Any]] = None) -> _INFER_CLS:
     return model_args, data_args, finetuning_args, generating_args
 
 
-def get_eval_args(args: Optional[Dict[str, Any]] = None) -> _EVAL_CLS:
+def get_eval_args(args: Optional[Union[Dict[str, Any], List[str]]] = None) -> _EVAL_CLS:
     model_args, data_args, eval_args, finetuning_args = _parse_eval_args(args)
 
     _set_transformers_logging()
