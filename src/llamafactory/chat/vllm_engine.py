@@ -76,8 +76,6 @@ class VllmEngine(BaseEngine):
         self.template.mm_plugin.expand_mm_tokens = False  # for vllm generate
         self.generating_args = generating_args.to_dict()
         self.adapter_name_or_path = model_args.adapter_name_or_path
-        if model_args.vllm_lora_models is not None:
-            self.vllm_lora_models = json.loads(model_args.vllm_lora_models)
 
         engine_args = {
             "model": model_args.model_name_or_path,
@@ -90,7 +88,7 @@ class VllmEngine(BaseEngine):
             "disable_log_stats": True,
             "disable_log_requests": True,
             "enforce_eager": model_args.vllm_enforce_eager,
-            "enable_lora": self.adapter_name_or_path is not None or self.vllm_lora_models is not None,
+            "enable_lora": self.adapter_name_or_path is not None,
             "max_lora_rank": model_args.vllm_max_lora_rank,
         }
         if self.template.mm_plugin.__class__.__name__ != "BasePlugin":
@@ -113,12 +111,19 @@ class VllmEngine(BaseEngine):
         if self.adapter_name_or_path is not None:
             return LoRARequest(
                 "default", 1, self.adapter_name_or_path[0])
-
-        if self.vllm_lora_models is not None:
-            for index, (key, value) in enumerate(self.vllm_lora_models.items(), start=1):
+        lora_models = self.get_lora_models()
+        if lora_models is not None:
+            for index, (key, value) in enumerate(lora_models.items(), start=1):
                 if key == model:
                     return LoRARequest(key, index, value)
         return None
+
+    def get_lora_models(self) -> Optional[Dict[str, str]]:
+        import os
+        lora_models = os.getenv("VLLM_LORA_MODEL_CONFIG")
+        if lora_models is None:
+            return None
+        return json.loads(lora_models)
 
     async def _generate(
         self,

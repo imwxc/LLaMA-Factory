@@ -158,14 +158,6 @@ class VllmArguments:
         default=32,
         metadata={"help": "Maximum rank of all LoRAs in the vLLM engine."},
     )
-    vllm_lora_models: Optional[str] = field(
-        default='',
-        metadata={
-            "help":
-            "lora models to load. Use commas to separate multiple models.",
-            "examples": '{"model1":"path_to_model1", "model2":"path_to_model2"}'
-        },
-    )
     vllm_config: Optional[Union[dict, str]] = field(
         default=None,
         metadata={"help": "Config to initialize the vllm engine. Please use JSON strings.",
