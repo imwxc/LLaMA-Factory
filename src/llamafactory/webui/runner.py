@@ -19,10 +19,11 @@ from subprocess import Popen, TimeoutExpired
 from typing import TYPE_CHECKING, Any, Dict, Generator, Optional
 
 from transformers.trainer import TRAINING_ARGS_NAME
+from transformers.utils import is_torch_npu_available
 
 from ..extras.constants import LLAMABOARD_CONFIG, PEFT_METHODS, TRAINING_STAGES
-from ..extras.misc import is_gpu_or_npu_available, torch_gc
-from ..extras.packages import is_gradio_available
+from ..extras.misc import is_gpu_or_npu_available, torch_gc, use_ray
+from ..extras.packages import is_gradio_available, is_transformers_version_equal_to_4_46
 from .common import DEFAULT_CACHE_DIR, DEFAULT_CONFIG_DIR, QUANTIZATION_BITS, get_save_dir, load_config
 from .locales import ALERTS, LOCALES
 from .utils import abort_process, gen_cmd, get_eval_results, get_trainer_info, load_args, save_args, save_cmd
@@ -98,6 +99,7 @@ class Runner:
 
     def _finalize(self, lang: str, finish_info: str) -> str:
         finish_info = ALERTS["info_aborted"][lang] if self.aborted else finish_info
+        gr.Info(finish_info)
         self.trainer = None
         self.aborted = False
         self.running = False
@@ -145,16 +147,19 @@ class Runner:
             shift_attn=get("train.shift_attn"),
             report_to="all" if get("train.report_to") else "none",
             use_galore=get("train.use_galore"),
+            use_apollo=get("train.use_apollo"),
             use_badam=get("train.use_badam"),
+            use_swanlab=get("train.use_swanlab"),
             output_dir=get_save_dir(model_name, finetuning_type, get("train.output_dir")),
             fp16=(get("train.compute_type") == "fp16"),
             bf16=(get("train.compute_type") == "bf16"),
             pure_bf16=(get("train.compute_type") == "pure_bf16"),
             plot_loss=True,
+            trust_remote_code=True,
             ddp_timeout=180000000,
-            include_num_input_tokens_seen=True,
-            **json.loads(get("train.extra_args")),
+            include_num_input_tokens_seen=False if is_transformers_version_equal_to_4_46() else True,  # FIXME
         )
+        args.update(json.loads(get("train.extra_args")))
 
         # checkpoints
         if get("top.checkpoint_path"):
@@ -169,6 +174,7 @@ class Runner:
         if get("top.quantization_bit") in QUANTIZATION_BITS:
             args["quantization_bit"] = int(get("top.quantization_bit"))
             args["quantization_method"] = get("top.quantization_method")
+            args["double_quantization"] = not is_torch_npu_available()
 
         # freeze config
         if args["finetuning_type"] == "freeze":
@@ -219,12 +225,27 @@ class Runner:
             args["galore_scale"] = get("train.galore_scale")
             args["galore_target"] = get("train.galore_target")
 
+        # apollo config
+        if args["use_apollo"]:
+            args["apollo_rank"] = get("train.apollo_rank")
+            args["apollo_update_interval"] = get("train.apollo_update_interval")
+            args["apollo_scale"] = get("train.apollo_scale")
+            args["apollo_target"] = get("train.apollo_target")
+
         # badam config
         if args["use_badam"]:
             args["badam_mode"] = get("train.badam_mode")
             args["badam_switch_mode"] = get("train.badam_switch_mode")
             args["badam_switch_interval"] = get("train.badam_switch_interval")
             args["badam_update_ratio"] = get("train.badam_update_ratio")
+
+        # swanlab config
+        if get("train.use_swanlab"):
+            args["swanlab_project"] = get("train.swanlab_project")
+            args["swanlab_run_name"] = get("train.swanlab_run_name")
+            args["swanlab_workspace"] = get("train.swanlab_workspace")
+            args["swanlab_api_key"] = get("train.swanlab_api_key")
+            args["swanlab_mode"] = get("train.swanlab_mode")
 
         # eval config
         if get("train.val_size") > 1e-6 and args["stage"] != "ppo":
@@ -267,6 +288,7 @@ class Runner:
             top_p=get("eval.top_p"),
             temperature=get("eval.temperature"),
             output_dir=get_save_dir(model_name, finetuning_type, get("eval.output_dir")),
+            trust_remote_code=True,
         )
 
         if get("eval.predict"):
@@ -319,7 +341,7 @@ class Runner:
             if args.get("deepspeed", None) is not None:
                 env["FORCE_TORCHRUN"] = "1"
 
-            self.trainer = Popen(f"llamafactory-cli train {save_cmd(args)}", env=env, shell=True)
+            self.trainer = Popen(["llamafactory-cli", "train", save_cmd(args)], env=env)
             yield from self.monitor()
 
     def _form_config_dict(self, data: Dict["Component", Any]) -> Dict[str, Any]:
@@ -357,6 +379,7 @@ class Runner:
         progress_bar = self.manager.get_elem_by_id("{}.progress_bar".format("train" if self.do_train else "eval"))
         loss_viewer = self.manager.get_elem_by_id("train.loss_viewer") if self.do_train else None
 
+        running_log = ""
         while self.trainer is not None:
             if self.aborted:
                 yield {
@@ -381,18 +404,18 @@ class Runner:
                 continue
 
         if self.do_train:
-            if os.path.exists(os.path.join(output_path, TRAINING_ARGS_NAME)):
+            if os.path.exists(os.path.join(output_path, TRAINING_ARGS_NAME)) or use_ray():
                 finish_info = ALERTS["info_finished"][lang]
             else:
                 finish_info = ALERTS["err_failed"][lang]
         else:
-            if os.path.exists(os.path.join(output_path, "all_results.json")):
+            if os.path.exists(os.path.join(output_path, "all_results.json")) or use_ray():
                 finish_info = get_eval_results(os.path.join(output_path, "all_results.json"))
             else:
                 finish_info = ALERTS["err_failed"][lang]
 
         return_dict = {
-            output_box: self._finalize(lang, finish_info),
+            output_box: self._finalize(lang, finish_info) + "\n\n" + running_log,
             progress_bar: gr.Slider(visible=False),
         }
         yield return_dict

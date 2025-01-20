@@ -68,7 +68,7 @@ def create_train_tab(engine: "Engine") -> Dict[str, "Component"]:
     )
 
     with gr.Row():
-        cutoff_len = gr.Slider(minimum=4, maximum=131072, value=1024, step=1)
+        cutoff_len = gr.Slider(minimum=4, maximum=131072, value=2048, step=1)
         batch_size = gr.Slider(minimum=1, maximum=1024, value=2, step=1)
         gradient_accumulation_steps = gr.Slider(minimum=1, maximum=1024, value=8, step=1)
         val_size = gr.Slider(minimum=0, maximum=1, value=0, step=0.001)
@@ -234,8 +234,8 @@ def create_train_tab(engine: "Engine") -> Dict[str, "Component"]:
         with gr.Row():
             use_galore = gr.Checkbox()
             galore_rank = gr.Slider(minimum=1, maximum=1024, value=16, step=1)
-            galore_update_interval = gr.Slider(minimum=1, maximum=1024, value=200, step=1)
-            galore_scale = gr.Slider(minimum=0, maximum=1, value=0.25, step=0.01)
+            galore_update_interval = gr.Slider(minimum=1, maximum=2048, value=200, step=1)
+            galore_scale = gr.Slider(minimum=0, maximum=100, value=2.0, step=0.1)
             galore_target = gr.Textbox(value="all")
 
     input_elems.update({use_galore, galore_rank, galore_update_interval, galore_scale, galore_target})
@@ -247,6 +247,26 @@ def create_train_tab(engine: "Engine") -> Dict[str, "Component"]:
             galore_update_interval=galore_update_interval,
             galore_scale=galore_scale,
             galore_target=galore_target,
+        )
+    )
+
+    with gr.Accordion(open=False) as apollo_tab:
+        with gr.Row():
+            use_apollo = gr.Checkbox()
+            apollo_rank = gr.Slider(minimum=1, maximum=1024, value=16, step=1)
+            apollo_update_interval = gr.Slider(minimum=1, maximum=2048, value=200, step=1)
+            apollo_scale = gr.Slider(minimum=0, maximum=100, value=32.0, step=0.1)
+            apollo_target = gr.Textbox(value="all")
+
+    input_elems.update({use_apollo, apollo_rank, apollo_update_interval, apollo_scale, apollo_target})
+    elem_dict.update(
+        dict(
+            apollo_tab=apollo_tab,
+            use_apollo=use_apollo,
+            apollo_rank=apollo_rank,
+            apollo_update_interval=apollo_update_interval,
+            apollo_scale=apollo_scale,
+            apollo_target=apollo_target,
         )
     )
 
@@ -267,6 +287,30 @@ def create_train_tab(engine: "Engine") -> Dict[str, "Component"]:
             badam_switch_mode=badam_switch_mode,
             badam_switch_interval=badam_switch_interval,
             badam_update_ratio=badam_update_ratio,
+        )
+    )
+
+    with gr.Accordion(open=False) as swanlab_tab:
+        with gr.Row():
+            use_swanlab = gr.Checkbox()
+            swanlab_project = gr.Textbox(value="llamafactory")
+            swanlab_run_name = gr.Textbox()
+            swanlab_workspace = gr.Textbox()
+            swanlab_api_key = gr.Textbox()
+            swanlab_mode = gr.Dropdown(choices=["cloud", "local"], value="cloud")
+
+    input_elems.update(
+        {use_swanlab, swanlab_project, swanlab_run_name, swanlab_workspace, swanlab_api_key, swanlab_mode}
+    )
+    elem_dict.update(
+        dict(
+            swanlab_tab=swanlab_tab,
+            use_swanlab=use_swanlab,
+            swanlab_project=swanlab_project,
+            swanlab_run_name=swanlab_run_name,
+            swanlab_workspace=swanlab_workspace,
+            swanlab_api_key=swanlab_api_key,
+            swanlab_mode=swanlab_mode,
         )
     )
 

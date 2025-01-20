@@ -30,15 +30,19 @@ LOCALES = {
     "model_name": {
         "en": {
             "label": "Model name",
+            "info": "Input the name prefix to search for the model.",
         },
         "ru": {
             "label": "Название модели",
+            "info": "Введите префикс имени для поиска модели.",
         },
         "zh": {
             "label": "模型名称",
+            "info": "输入首单词以检索模型。",
         },
         "ko": {
             "label": "모델 이름",
+            "info": "모델을 검색하기 위해 이름 접두어를 입력하세요.",
         },
     },
     "model_path": {
@@ -464,7 +468,7 @@ LOCALES = {
     "val_size": {
         "en": {
             "label": "Val size",
-            "info": "Proportion of data in the dev set.",
+            "info": "Percentage of validation set from the entire dataset.",
         },
         "ru": {
             "label": "Размер валидации",
@@ -1115,7 +1119,7 @@ LOCALES = {
             "info": "Нормализация оценок в тренировке PPO.",
         },
         "zh": {
-            "label": "奖励模型",
+            "label": "归一化分数",
             "info": "PPO 训练中归一化奖励分数。",
         },
         "ko": {
@@ -1158,19 +1162,19 @@ LOCALES = {
     "use_galore": {
         "en": {
             "label": "Use GaLore",
-            "info": "Enable gradient low-Rank projection.",
+            "info": "Use GaLore optimizer.",
         },
         "ru": {
             "label": "Использовать GaLore",
-            "info": "Включить проекцию градиента на низкоранговое пространство.",
+            "info": "Используйте оптимизатор GaLore.",
         },
         "zh": {
             "label": "使用 GaLore",
-            "info": "使用梯度低秩投影。",
+            "info": "使用 GaLore 优化器。",
         },
         "ko": {
             "label": "GaLore 사용",
-            "info": "그레디언트 로우 랭크 프로젝션을 활성화합니다.",
+            "info": "GaLore 최적화를 사용하세요.",
         },
     },
     "galore_rank": {
@@ -1243,6 +1247,110 @@ LOCALES = {
         "ko": {
             "label": "GaLore 모듈",
             "info": "GaLore를 적용할 모듈의 이름. 모듈 간에는 쉼표(,)로 구분하십시오.",
+        },
+    },
+    "apollo_tab": {
+        "en": {
+            "label": "APOLLO configurations",
+        },
+        "ru": {
+            "label": "Конфигурации APOLLO",
+        },
+        "zh": {
+            "label": "APOLLO 参数设置",
+        },
+        "ko": {
+            "label": "APOLLO 구성",
+        },
+    },
+    "use_apollo": {
+        "en": {
+            "label": "Use APOLLO",
+            "info": "Use APOLLO optimizer.",
+        },
+        "ru": {
+            "label": "Использовать APOLLO",
+            "info": "Используйте оптимизатор APOLLO.",
+        },
+        "zh": {
+            "label": "使用 APOLLO",
+            "info": "使用 APOLLO 优化器。",
+        },
+        "ko": {
+            "label": "APOLLO 사용",
+            "info": "APOLLO 최적화를 사용하세요.",
+        },
+    },
+    "apollo_rank": {
+        "en": {
+            "label": "APOLLO rank",
+            "info": "The rank of APOLLO gradients.",
+        },
+        "ru": {
+            "label": "Ранг APOLLO",
+            "info": "Ранг градиентов APOLLO.",
+        },
+        "zh": {
+            "label": "APOLLO 秩",
+            "info": "APOLLO 梯度的秩大小。",
+        },
+        "ko": {
+            "label": "APOLLO 랭크",
+            "info": "APOLLO 그레디언트의 랭크.",
+        },
+    },
+    "apollo_update_interval": {
+        "en": {
+            "label": "Update interval",
+            "info": "Number of steps to update the APOLLO projection.",
+        },
+        "ru": {
+            "label": "Интервал обновления",
+            "info": "Количество шагов для обновления проекции APOLLO.",
+        },
+        "zh": {
+            "label": "更新间隔",
+            "info": "相邻两次投影更新的步数。",
+        },
+        "ko": {
+            "label": "업데이트 간격",
+            "info": "APOLLO 프로젝션을 업데이트할 간격의 스텝 수.",
+        },
+    },
+    "apollo_scale": {
+        "en": {
+            "label": "APOLLO scale",
+            "info": "APOLLO scaling coefficient.",
+        },
+        "ru": {
+            "label": "LoRA Alpha",
+            "info": "Коэффициент масштабирования APOLLO.",
+        },
+        "zh": {
+            "label": "APOLLO 缩放系数",
+            "info": "APOLLO 缩放系数大小。",
+        },
+        "ko": {
+            "label": "APOLLO 스케일",
+            "info": "APOLLO 스케일링 계수.",
+        },
+    },
+    "apollo_target": {
+        "en": {
+            "label": "APOLLO modules",
+            "info": "Name(s) of modules to apply APOLLO. Use commas to separate multiple modules.",
+        },
+        "ru": {
+            "label": "Модули APOLLO",
+            "info": "Имена модулей для применения APOLLO. Используйте запятые для разделения нескольких модулей.",
+        },
+        "zh": {
+            "label": "APOLLO 作用模块",
+            "info": "应用 APOLLO 的模块名称。使用英文逗号分隔多个名称。",
+        },
+        "ko": {
+            "label": "APOLLO 모듈",
+            "info": "APOLLO를 적용할 모듈의 이름. 모듈 간에는 쉼표(,)로 구분하십시오.",
         },
     },
     "badam_tab": {
@@ -1347,6 +1455,120 @@ LOCALES = {
         "ko": {
             "label": "업데이트 비율",
             "info": "비율-BAdam의 업데이트 비율.",
+        },
+    },
+    "swanlab_tab": {
+        "en": {
+            "label": "SwanLab configurations",
+        },
+        "ru": {
+            "label": "Конфигурации SwanLab",
+        },
+        "zh": {
+            "label": "SwanLab 参数设置",
+        },
+        "ko": {
+            "label": "SwanLab 설정",
+        },
+    },
+    "use_swanlab": {
+        "en": {
+            "label": "Use SwanLab",
+            "info": "Enable SwanLab for experiment tracking and visualization.",
+        },
+        "ru": {
+            "label": "Использовать SwanLab",
+            "info": "Включить SwanLab для отслеживания и визуализации экспериментов.",
+        },
+        "zh": {
+            "label": "使用 SwanLab",
+            "info": "启用 SwanLab 进行实验跟踪和可视化。",
+        },
+        "ko": {
+            "label": "SwanLab 사용",
+            "info": "SwanLab를 사용하여 실험을 추적하고 시각화합니다.",
+        },
+    },
+    "swanlab_project": {
+        "en": {
+            "label": "SwanLab project",
+        },
+        "ru": {
+            "label": "SwanLab Проект",
+        },
+        "zh": {
+            "label": "SwanLab 项目名",
+        },
+        "ko": {
+            "label": "SwanLab 프로젝트",
+        },
+    },
+    "swanlab_run_name": {
+        "en": {
+            "label": "SwanLab experiment name (optional)",
+        },
+        "ru": {
+            "label": "SwanLab Имя эксперимента (опционально)",
+        },
+        "zh": {
+            "label": "SwanLab 实验名（非必填）",
+        },
+        "ko": {
+            "label": "SwanLab 실험 이름 (선택 사항)",
+        },
+    },
+    "swanlab_workspace": {
+        "en": {
+            "label": "SwanLab workspace (optional)",
+            "info": "Workspace for SwanLab. Defaults to the personal workspace.",
+        },
+        "ru": {
+            "label": "SwanLab Рабочая область (опционально)",
+            "info": "Рабочая область SwanLab, если не заполнено, то по умолчанию в личной рабочей области.",
+        },
+        "zh": {
+            "label": "SwanLab 工作区（非必填）",
+            "info": "SwanLab 的工作区，默认在个人工作区下。",
+        },
+        "ko": {
+            "label": "SwanLab 작업 영역 (선택 사항)",
+            "info": "SwanLab 조직의 작업 영역, 비어 있으면 기본적으로 개인 작업 영역에 있습니다.",
+        },
+    },
+    "swanlab_api_key": {
+        "en": {
+            "label": "SwanLab API key (optional)",
+            "info": "API key for SwanLab.",
+        },
+        "ru": {
+            "label": "SwanLab API ключ (опционально)",
+            "info": "API ключ для SwanLab.",
+        },
+        "zh": {
+            "label": "SwanLab API密钥（非必填）",
+            "info": "用于在编程环境登录 SwanLab，已登录则无需填写。",
+        },
+        "ko": {
+            "label": "SwanLab API 키 (선택 사항)",
+            "info": "SwanLab의 API 키.",
+        },
+    },
+    "swanlab_mode": {
+        "en": {
+            "label": "SwanLab mode",
+            "info": "Cloud or offline version.",
+        },
+        "ru": {
+            "label": "SwanLab Режим",
+            "info": "Версия в облаке или локальная версия.",
+        },
+        "zh": {
+            "label": "SwanLab 模式",
+            "info": "使用云端版或离线版 SwanLab。",
+        },
+        "ko": {
+            "label": "SwanLab 모드",
+            "info": "클라우드 버전 또는 오프라인 버전.",
         },
     },
     "cmd_preview_btn": {
