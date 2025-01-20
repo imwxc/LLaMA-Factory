@@ -111,6 +111,7 @@ class VllmEngine(BaseEngine):
         if self.adapter_name_or_path is not None:
             return LoRARequest(
                 "default", 1, self.adapter_name_or_path[0])
+        
         lora_models = self.get_lora_models()
         if lora_models is not None:
             for index, (key, value) in enumerate(lora_models.items(), start=1):
@@ -217,7 +218,6 @@ class VllmEngine(BaseEngine):
             max_tokens=max_tokens,
             skip_special_tokens=self.generating_args["skip_special_tokens"],
         )
-        print('sampling_params: ', sampling_params)
 
         if images is not None:  # add image features
             multi_modal_data = {"image": []}

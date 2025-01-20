@@ -169,6 +169,7 @@ async def create_chat_completion_response(
         max_new_tokens=request.max_tokens,
         num_return_sequences=request.n,
         stop=request.stop,
+        model=request.model
     )
 
     prompt_length, response_length = 0, 0
