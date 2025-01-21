@@ -93,6 +93,12 @@ class VllmEngine(BaseEngine):
             "enforce_eager": model_args.vllm_enforce_eager,
             "enable_lora": self.adapter_name_or_path is not None,
             "max_lora_rank": model_args.vllm_max_lora_rank,
+            # test qwen2_vl video input set
+            "mm_processor_kwargs": {
+                "min_pixels": 28 * 28,
+                "max_pixels": 1280 * 28 * 28,
+            },
+            "max_num_seqs": 5
         }
         if self.template.mm_plugin.__class__.__name__ != "BasePlugin":
             engine_args["limit_mm_per_prompt"] = {"image": 4, "video": 2}
@@ -114,7 +120,7 @@ class VllmEngine(BaseEngine):
         if self.adapter_name_or_path is not None:
             return LoRARequest(
                 "default", 1, self.adapter_name_or_path[0])
-        
+
         lora_models = self.get_lora_models()
         if lora_models is not None:
             for index, (key, value) in enumerate(lora_models.items(), start=1):
@@ -246,7 +252,7 @@ class VllmEngine(BaseEngine):
             multi_modal_data = None
 
         result_generator = self.model.generate(
-            prompt={"prompt_token_ids": prompt_ids, "multi_modal_data": multi_modal_data},
+            prompt={"prompt_token_ids": prompt_ids,"multi_modal_data": multi_modal_data},
             sampling_params=sampling_params,
             request_id=request_id,
             lora_request=self.get_lora_request(model),
