@@ -17,6 +17,26 @@ if is_vllm_available():
     from vllm.multimodal.utils import fetch_video
 
 
+def video_to_ndarrays(path: str, num_frames: int = -1) -> npt.NDArray:
+    cap = cv2.VideoCapture(path)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video file {path}")
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    frames = []
+    for i in range(total_frames):
+        ret, frame = cap.read()
+        if ret:
+            frames.append(frame)
+    cap.release()
+
+    frames = np.stack(frames)
+    frames = sample_frames_from_video(frames, num_frames)
+    if len(frames) < num_frames:
+        raise ValueError(f"Could not read enough frames from video file {path}"
+                         f" (expected {num_frames} frames, got {len(frames)})")
+    return frames
+
 def _load_video_from_bytes(video_bytes: bytes, num_frames: int = -1) -> npt.NDArray:
     """Load video from bytes using OpenCV.
     Args:
@@ -70,9 +90,7 @@ def process_video_url(video_url: str, num_frames: int = 16) -> npt.NDArray:
             video_bytes = base64.b64decode(video_url.split(",", maxsplit=1)[1])
             return _load_video_from_bytes(video_bytes, num_frames)
         if os.path.isfile(video_url):  # local file
-            with open(video_url, 'rb') as f:
-                video_bytes = f.read()
-            return _load_video_from_bytes(video_bytes, num_frames)
+            return video_to_ndarrays(video_url, num_frames)
         else:  # remote URL
             if is_vllm_available():
                 return fetch_video(video_url)
