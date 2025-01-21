@@ -238,7 +238,7 @@ class VllmEngine(BaseEngine):
             for video in videos:
                 if not isinstance(video, (str, np.ndarray)):
                     raise ValueError(
-                        f"Expected video input is a np.NDArray, but got {type(video)}.")
+                        f"Expected video input is a np.ndarray or str, but got {type(video)}.")
                 if isinstance(video, str):
                     print(f'multi_modal_data: video is {video}')
                     video = process_video_url(video)
