@@ -168,22 +168,16 @@ class VllmEngine(BaseEngine):
         top_k: Optional[float] = input_kwargs.pop("top_k", None)
         num_return_sequences: int = input_kwargs.pop("num_return_sequences", 1)
         model: str = input_kwargs.pop("model", 'default')
-        repetition_penalty: Optional[float] = input_kwargs.pop(
-            "repetition_penalty", None)
-        length_penalty: Optional[float] = input_kwargs.pop(
-            "length_penalty", None)
-        frequency_penalty: Optional[float] = input_kwargs.pop(
-            "frequency_penalty", None)
-        presence_penalty: Optional[float] = input_kwargs.pop(
-            "presence_penalty", None)
+        repetition_penalty: Optional[float] = input_kwargs.pop("repetition_penalty", self.generating_args["repetition_penalty"])
+        length_penalty: Optional[float] = input_kwargs.pop("length_penalty", None)
+        frequency_penalty: Optional[float] = input_kwargs.pop("frequency_penalty", self.generating_args["frequency_penalty"])
+        presence_penalty: Optional[float] = input_kwargs.pop("presence_penalty", self.generating_args["presence_penalty"])
         max_length: Optional[int] = input_kwargs.pop("max_length", None)
-        max_new_tokens: Optional[int] = input_kwargs.pop(
-            "max_new_tokens", None)
+        max_new_tokens: Optional[int] = input_kwargs.pop("max_new_tokens", None)
         stop: Optional[Union[str, List[str]]] = input_kwargs.pop("stop", None)
 
         if length_penalty is not None:
-            logger.warning_rank0(
-                "Length penalty is not supported by the vllm engine yet.")
+            logger.warning_rank0("Length penalty is not supported by the vllm engine yet.")
 
         if "max_new_tokens" in self.generating_args:
             max_tokens = self.generating_args["max_new_tokens"]
@@ -201,15 +195,9 @@ class VllmEngine(BaseEngine):
 
         sampling_params = SamplingParams(
             n=num_return_sequences,
-            repetition_penalty=(
-                repetition_penalty if repetition_penalty is not None else self.generating_args[
-                    "repetition_penalty"]
-            )
-            or 1.0,  # repetition_penalty must > 0
-            frequency_penalty=(
-                frequency_penalty if frequency_penalty is not None else self.generating_args["frequency_penalty"]) or 0,
-            presence_penalty=(
-                presence_penalty if presence_penalty is not None else self.generating_args["presence_penalty"]) or 0,
+            repetition_penalty=repetition_penalty,
+            frequency_penalty=frequency_penalty,
+            presence_penalty=presence_penalty,
             temperature=temperature if temperature is not None else self.generating_args[
                 "temperature"],
             # top_p must > 0
