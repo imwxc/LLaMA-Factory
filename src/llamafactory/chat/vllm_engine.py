@@ -92,16 +92,11 @@ class VllmEngine(BaseEngine):
             "disable_log_requests": True,
             "enforce_eager": model_args.vllm_enforce_eager,
             "enable_lora": self.adapter_name_or_path is not None,
-            "max_lora_rank": model_args.vllm_max_lora_rank,
-            # test qwen2_vl video input set
-            "mm_processor_kwargs": {
-                "min_pixels": 28 * 28,
-                "max_pixels": 1280 * 28 * 28,
-            },
-            "max_num_seqs": 5
+            "max_lora_rank": model_args.vllm_max_lora_rank
         }
         if self.template.mm_plugin.__class__.__name__ != "BasePlugin":
             engine_args["limit_mm_per_prompt"] = {"image": 4, "video": 2}
+            engine_args["mm_processor_kwargs"] = self.template.mm_plugin.mm_processor_kwargs
 
         if isinstance(model_args.vllm_config, dict):
             engine_args.update(model_args.vllm_config)
@@ -255,7 +250,7 @@ class VllmEngine(BaseEngine):
             prompt={"prompt_token_ids": prompt_ids,"multi_modal_data": multi_modal_data},
             sampling_params=sampling_params,
             request_id=request_id,
-            lora_request=self.get_lora_request(model),
+            lora_request=self.get_lora_request(model)
         )
         return result_generator
 

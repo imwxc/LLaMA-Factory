@@ -64,6 +64,7 @@ class BasePlugin:
         self.image_token = image_token
         self.video_token = video_token
         self.expand_mm_tokens = True
+        self.mm_processor_kwargs = None
 
     def _validate_input(
         self,
@@ -775,6 +776,16 @@ class PixtralPlugin(BasePlugin):
 
 
 class Qwen2vlPlugin(BasePlugin):
+
+    def __init__(self, image_token: Optional[str], video_token: Optional[str]) -> None:
+        self.image_token = image_token
+        self.video_token = video_token
+        self.expand_mm_tokens = True
+        self.mm_processor_kwargs = {
+            "min_pixels": 256 * 28 * 28,
+            "max_pixels": 1280 * 28 * 28,
+        }
+
     @override
     def _preprocess_image(self, image: "ImageObject", **kwargs) -> "ImageObject":
         image = super()._preprocess_image(image, **kwargs)
