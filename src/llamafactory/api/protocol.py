@@ -75,7 +75,7 @@ class ImageURL(BaseModel):
 
 
 class MultimodalInputItem(BaseModel):
-    type: Literal["text", "image_url"]
+    type: Literal["text", "image_url", "video_url"]
     text: Optional[str] = None
     image_url: Optional[ImageURL] = None
 
