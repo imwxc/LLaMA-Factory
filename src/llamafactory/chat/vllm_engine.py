@@ -13,6 +13,9 @@
 # limitations under the License.
 
 import uuid
+import json
+import numpy as np
+
 from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Dict, List, Optional, Sequence, Union
 
 from typing_extensions import override
@@ -22,11 +25,11 @@ from ..extras import logging
 from ..extras.constants import IMAGE_PLACEHOLDER, VIDEO_PLACEHOLDER
 from ..extras.misc import get_device_count
 from ..extras.packages import is_pillow_available, is_vllm_available
+from ..extras.multimodal_utils import process_video_url
 from ..model import load_config, load_tokenizer
 from ..model.model_utils.quantization import QuantizationMethod
 from ..model.model_utils.visual import LlavaMultiModalProjectorForYiVLForVLLM
 from .base_engine import BaseEngine, Response
-import json
 
 
 if is_pillow_available():
@@ -229,11 +232,20 @@ class VllmEngine(BaseEngine):
                     image = Image.open(image).convert("RGB")
 
                 multi_modal_data["image"].append(image)
+        elif videos is not None:  # add video features
+            multi_modal_data = {"video": []}
+            for video in videos:
+                if not isinstance(video, np.NDArray):
+                    raise ValueError(
+                        f"Expected video input is a np.NDArray, but got {type(video)}.")
+                if isinstance(video, str):
+                    video = process_video_url(video)
+                multi_modal_data["video"].append(video)
         else:
             multi_modal_data = None
 
         result_generator = self.model.generate(
-            {"prompt_token_ids": prompt_ids, "multi_modal_data": multi_modal_data},
+            prompt={"prompt_token_ids": prompt_ids, "multi_modal_data": multi_modal_data},
             sampling_params=sampling_params,
             request_id=request_id,
             lora_request=self.get_lora_request(model),

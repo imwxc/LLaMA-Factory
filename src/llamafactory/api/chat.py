@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Tuple
 from ..data import Role as DataRole
 from ..extras import logging
 from ..extras.packages import is_fastapi_available, is_pillow_available, is_requests_available
+from ..extras.multimodal_utils import process_image_url, process_video_url
 from .common import dictify, jsonify
 from .protocol import (
     ChatCompletionMessage,
@@ -87,6 +88,7 @@ def _process_request(
 
     input_messages = []
     images = []
+    videos = []
     for i, message in enumerate(request.messages):
         if i % 2 == 0 and message.role not in [Role.USER, Role.TOOL]:
             raise HTTPException(
@@ -109,16 +111,12 @@ def _process_request(
                 if input_item.type == "text":
                     input_messages.append(
                         {"role": ROLE_MAPPING[message.role], "content": input_item.text})
-                else:
-                    image_url = input_item.image_url.url
-                    if re.match(r"^data:image\/(png|jpg|jpeg|gif|bmp);base64,(.+)$", image_url):  # base64 image
-                        image_stream = io.BytesIO(base64.b64decode(image_url.split(",", maxsplit=1)[1]))
-                    elif os.path.isfile(image_url):  # local file
-                        image_stream = open(image_url, "rb")
-                    else:  # web uri
-                        image_stream = requests.get(image_url, stream=True).raw
-
-                    images.append(Image.open(image_stream).convert("RGB"))
+                elif input_item.type == "image_url":
+                    image_data = process_image_url(input_item.image_url.url)
+                    images.append(image_data)
+                elif input_item.type == "video_url":
+                    video_data = process_video_url(input_item.video_url.url)
+                    videos.append(video_data)
         else:
             input_messages.append(
                 {"role": ROLE_MAPPING[message.role], "content": message.content})
@@ -135,7 +133,6 @@ def _process_request(
         tools = None
 
     return input_messages, system, tools, images or None
-
 
 def _create_stream_chat_completion_chunk(
     completion_id: str,

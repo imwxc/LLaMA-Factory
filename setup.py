@@ -70,6 +70,7 @@ extra_require = {
         "referencing",
         "jsonschema_specifications",
         "librosa",
+        "opencv-python",  # Added opencv-python dependency
     ],
     "modelscope": ["modelscope"],
     "openmind": ["openmind"],
