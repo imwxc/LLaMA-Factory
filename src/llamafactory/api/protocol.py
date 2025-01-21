@@ -102,6 +102,7 @@ class ChatCompletionRequest(BaseModel):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     frequency_penalty: Optional[float] = None
+    repetition_penalty: Optional[float] = None
     presence_penalty: Optional[float] = None
     n: int = 1
     max_tokens: Optional[int] = None
