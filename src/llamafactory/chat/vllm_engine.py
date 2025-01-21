@@ -168,10 +168,10 @@ class VllmEngine(BaseEngine):
         top_k: Optional[float] = input_kwargs.pop("top_k", None)
         num_return_sequences: int = input_kwargs.pop("num_return_sequences", 1)
         model: str = input_kwargs.pop("model", 'default')
-        repetition_penalty: Optional[float] = input_kwargs.pop("repetition_penalty", self.generating_args["repetition_penalty"])
+        repetition_penalty: Optional[float] = input_kwargs.pop("repetition_penalty", self.generating_args["repetition_penalty"]) or 1
         length_penalty: Optional[float] = input_kwargs.pop("length_penalty", None)
-        frequency_penalty: Optional[float] = input_kwargs.pop("frequency_penalty", self.generating_args["frequency_penalty"])
-        presence_penalty: Optional[float] = input_kwargs.pop("presence_penalty", self.generating_args["presence_penalty"])
+        frequency_penalty: Optional[float] = input_kwargs.pop("frequency_penalty", self.generating_args["frequency_penalty"]) or 1
+        presence_penalty: Optional[float] = input_kwargs.pop("presence_penalty", self.generating_args["presence_penalty"]) or 0
         max_length: Optional[int] = input_kwargs.pop("max_length", None)
         max_new_tokens: Optional[int] = input_kwargs.pop("max_new_tokens", None)
         stop: Optional[Union[str, List[str]]] = input_kwargs.pop("stop", None)

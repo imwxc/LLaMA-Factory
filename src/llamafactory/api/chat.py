@@ -132,7 +132,7 @@ def _process_request(
     else:
         tools = None
 
-    return input_messages, system, tools, images or None
+    return input_messages, system, tools, images, videos or None
 
 def _create_stream_chat_completion_chunk(
     completion_id: str,
@@ -152,12 +152,13 @@ async def create_chat_completion_response(
     request: "ChatCompletionRequest", chat_model: "ChatModel"
 ) -> "ChatCompletionResponse":
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
-    input_messages, system, tools, images = _process_request(request)
+    input_messages, system, tools, images, videos = _process_request(request)
     responses = await chat_model.achat(
         input_messages,
         system,
         tools,
         images,
+        videos,
         do_sample=request.do_sample,
         temperature=request.temperature,
         top_p=request.top_p,
@@ -210,7 +211,7 @@ async def create_stream_chat_completion_response(
     request: "ChatCompletionRequest", chat_model: "ChatModel"
 ) -> AsyncGenerator[str, None]:
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
-    input_messages, system, tools, images = _process_request(request)
+    input_messages, system, tools, images, videos = _process_request(request)
     if tools:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Cannot stream function calls.")
@@ -228,6 +229,7 @@ async def create_stream_chat_completion_response(
         system,
         tools,
         images,
+        videos,
         do_sample=request.do_sample,
         temperature=request.temperature,
         top_p=request.top_p,
