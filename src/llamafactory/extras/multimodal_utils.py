@@ -8,6 +8,7 @@ import numpy.typing as npt
 # pylint: disable=no-member
 import cv2
 from typing import Union
+import tempfile
 from .packages import is_pillow_available, is_vllm_available
 
 if is_pillow_available():
@@ -15,6 +16,53 @@ if is_pillow_available():
 
 if is_vllm_available():
     from vllm.multimodal.utils import fetch_video
+
+def save_video_to_temp(video_url: str) -> str:
+    """将视频URL（HTTP或base64）保存为临时文件。
+
+    Args:
+        video_url: 视频的URL，可以是HTTP URL或base64编码的数据URL
+
+    Returns:
+        str: 临时文件的路径
+
+    Raises:
+        ValueError: 当URL格式无效或无法保存文件时
+    """
+    # 创建临时文件
+    temp_file = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False)
+    temp_path = temp_file.name
+
+    try:
+        if re.match(r"^data:video\/(mp4|webm|ogg);base64,(.+)$", video_url):
+            # 处理base64编码的视频
+            video_bytes = base64.b64decode(video_url.split(",", maxsplit=1)[1])
+            temp_file.write(video_bytes)
+        elif os.path.isfile(video_url):
+            # 如果已经是本地文件，直接返回路径
+            temp_file.close()
+            os.unlink(temp_path)  # 删除创建的临时文件
+            return video_url
+        else:
+            # 处理HTTP URL
+            try:
+                response = requests.get(video_url, stream=True)
+                response.raise_for_status()  # 检查请求是否成功
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        temp_file.write(chunk)
+            except requests.exceptions.RequestException as e:
+                raise ValueError(f"Failed to download video from URL: {str(e)}")
+
+        temp_file.close()
+        return temp_path
+
+    except Exception as e:
+        # 如果出现错误，清理临时文件
+        temp_file.close()
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        raise ValueError(f"Failed to save video: {str(e)}")
 
 
 def video_to_ndarrays(path: str, num_frames: int = -1) -> npt.NDArray:
@@ -85,19 +133,19 @@ def process_video_url(video_url: str, num_frames: int = 16) -> npt.NDArray:
         numpy.ndarray: Array of video frames with shape (num_frames, height, width, 3)
     """
     if isinstance(video_url, str):
-        # Handle base64 data URL
-        if re.match(r"^data:video\/(mp4|webm|ogg);base64,(.+)$", video_url):
-            video_bytes = base64.b64decode(video_url.split(",", maxsplit=1)[1])
-            return _load_video_from_bytes(video_bytes, num_frames)
-        if os.path.isfile(video_url):  # local file
-            return video_to_ndarrays(video_url, num_frames)
-        else:  # remote URL
-            if is_vllm_available():
-                return fetch_video(video_url)
-            else:
-                # Download video directly to memory
-                response = requests.get(video_url)
-                return _load_video_from_bytes(response.content, num_frames)
+        try:
+            # 保存到临时文件
+            temp_path = save_video_to_temp(video_url)
+            # 处理视频文件
+            try:
+                return video_to_ndarrays(temp_path, num_frames)
+            finally:
+                # 如果是临时文件，处理完后删除
+                if temp_path != video_url and os.path.exists(temp_path):
+                    os.unlink(temp_path)
+        except Exception:
+            import traceback
+            raise ValueError(f"Failed to process video: {str(video_url)}\n {traceback.format_exc()}")
 
     raise ValueError(
         "Invalid video_url format. Must be file path, URL, or base64 data URL.")

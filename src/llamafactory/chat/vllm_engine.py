@@ -140,27 +140,23 @@ class VllmEngine(BaseEngine):
         **input_kwargs,
     ) -> AsyncIterator["RequestOutput"]:
         request_id = f"chatcmpl-{uuid.uuid4().hex}"
-        mm_input_dict = {"images": [], "videos": [],
-                         "imglens": [0], "vidlens": [0]}
+        mm_input_dict = {"images": [], "videos": [],"imglens": [0], "vidlens": [0]}
         if images is not None:
             mm_input_dict.update({"images": images, "imglens": [len(images)]})
             if not any(IMAGE_PLACEHOLDER in message["content"] for message in messages):
-                messages[0]["content"] = IMAGE_PLACEHOLDER * \
-                    len(images) + messages[0]["content"]
+                messages[0]["content"] = IMAGE_PLACEHOLDER * len(images) + messages[0]["content"]
 
         if videos is not None:
             mm_input_dict.update({"videos": videos, "vidlens": [len(videos)]})
             if not any(VIDEO_PLACEHOLDER in message["content"] for message in messages):
-                messages[0]["content"] = VIDEO_PLACEHOLDER * \
-                    len(videos) + messages[0]["content"]
+                messages[0]["content"] = VIDEO_PLACEHOLDER * len(videos) + messages[0]["content"]
 
         messages = self.template.mm_plugin.process_messages(
             messages, mm_input_dict["images"], mm_input_dict["videos"], self.processor
         )
         paired_messages = messages + [{"role": "assistant", "content": ""}]
         system = system or self.generating_args["default_system"]
-        prompt_ids, _ = self.template.encode_oneturn(
-            self.tokenizer, paired_messages, system, tools)
+        prompt_ids, _ = self.template.encode_oneturn(self.tokenizer, paired_messages, system, tools)
         prompt_length = len(prompt_ids)
 
         temperature: Optional[float] = input_kwargs.pop("temperature", None)
@@ -221,16 +217,17 @@ class VllmEngine(BaseEngine):
                     image = Image.open(image).convert("RGB")
 
                 multi_modal_data["image"].append(image)
-        elif videos is not None:  # add video features
+
+        if videos is not None:  # add video features
             multi_modal_data = {"video": []}
             for video in videos:
-                if not isinstance(video, (str, np.ndarray)):
-                    raise ValueError(
-                        f"Expected video input is a np.ndarray or str, but got {type(video)}.")
-                if isinstance(video, str):
-                    print(f'multi_modal_data: video is {video}')
-                    video = process_video_url(video)
-                multi_modal_data["video"].append(video)
+                if isinstance(video, np.ndarray):
+                    multi_modal_data["video"].append(video)
+                elif isinstance(video, str):
+                    processed_video = process_video_url(video)
+                    multi_modal_data["video"].append(processed_video)
+                else:
+                    raise ValueError(f"Unsupported video type: {type(video)}")
         else:
             multi_modal_data = None
 
