@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Tuple
 from ..data import Role as DataRole
 from ..extras import logging
 from ..extras.packages import is_fastapi_available, is_pillow_available, is_requests_available
-from ..extras.multimodal_utils import process_image_url, process_video_url
+from ..extras.multimodal_utils import process_image_url, save_video_to_temp
 from .common import dictify, jsonify
 from .protocol import (
     ChatCompletionMessage,
@@ -115,8 +115,8 @@ def _process_request(
                     image_data = process_image_url(input_item.image_url.url)
                     images.append(image_data)
                 elif input_item.type == "video_url":
-                    video_data = process_video_url(input_item.video_url.url)
-                    videos.append(video_data)
+                    video_temp_file_path = save_video_to_temp(input_item.video_url.url)
+                    videos.append(video_temp_file_path)
         else:
             input_messages.append(
                 {"role": ROLE_MAPPING[message.role], "content": message.content})

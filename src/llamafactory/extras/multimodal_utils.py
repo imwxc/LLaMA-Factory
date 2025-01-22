@@ -14,45 +14,41 @@ from .packages import is_pillow_available, is_vllm_available
 if is_pillow_available():
     from PIL import Image
 
-if is_vllm_available():
-    from vllm.multimodal.utils import fetch_video
-
 def save_video_to_temp(video_url: str) -> str:
-    """将视频URL（HTTP或base64）保存为临时文件。
+    """Save video URL (HTTP or base64) to a temporary file.
 
     Args:
-        video_url: 视频的URL，可以是HTTP URL或base64编码的数据URL
+        video_url: Video URL, can be either an HTTP URL or a base64-encoded data URL
 
     Returns:
-        str: 临时文件的路径
+        str: Path to the temporary file
 
     Raises:
-        ValueError: 当URL格式无效或无法保存文件时
+        ValueError: When URL format is invalid or file cannot be saved
     """
     # 创建临时文件
-    temp_file = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False)
-    temp_path = temp_file.name
-
     try:
         if re.match(r"^data:video\/(mp4|webm|ogg);base64,(.+)$", video_url):
+            temp_file = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False)
+            temp_path = temp_file.name
             # 处理base64编码的视频
             video_bytes = base64.b64decode(video_url.split(",", maxsplit=1)[1])
             temp_file.write(video_bytes)
         elif os.path.isfile(video_url):
             # 如果已经是本地文件，直接返回路径
-            temp_file.close()
-            os.unlink(temp_path)  # 删除创建的临时文件
             return video_url
         else:
             # 处理HTTP URL
             try:
+                temp_file = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False)
+                temp_path = temp_file.name
                 response = requests.get(video_url, stream=True)
                 response.raise_for_status()  # 检查请求是否成功
                 for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
                         temp_file.write(chunk)
             except requests.exceptions.RequestException as e:
-                raise ValueError(f"Failed to download video from URL: {str(e)}")
+                raise ValueError(f"Failed to download video from URL:{video_url} {str(e)}")
 
         temp_file.close()
         return temp_path
@@ -84,43 +80,6 @@ def video_to_ndarrays(path: str, num_frames: int = -1) -> npt.NDArray:
         raise ValueError(f"Could not read enough frames from video file {path}"
                          f" (expected {num_frames} frames, got {len(frames)})")
     return frames
-
-def _load_video_from_bytes(video_bytes: bytes, num_frames: int = -1) -> npt.NDArray:
-    """Load video from bytes using OpenCV.
-    Args:
-        video_bytes: Video bytes
-        num_frames: Number of frames to extract. Default is -1 (all frames).
-
-    Returns:
-        numpy.ndarray: Array of video frames
-    """
-    # Convert bytes to numpy array
-    nparr = np.frombuffer(video_bytes, np.uint8)
-
-    # Create a memory file object for OpenCV to read from
-    cap = cv2.VideoCapture()
-    cap.open(nparr)
-    if not cap.isOpened():
-        raise ValueError("Could not open video from bytes")
-
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    frames = []
-    for i in range(total_frames):
-        ret, frame = cap.read()
-        if ret:
-            frames.append(frame)
-    cap.release()
-
-    if not frames:
-        raise ValueError("No frames were extracted from the video")
-
-    frames = np.stack(frames)
-    frames = sample_frames_from_video(frames, num_frames)
-    if num_frames > 0 and len(frames) < num_frames:
-        raise ValueError(f"Could not read enough frames from video"
-                         f" (expected {num_frames} frames, got {len(frames)})")
-    return frames
-
 
 def process_video_url(video_url: str, num_frames: int = 16) -> npt.NDArray:
     """Process video URL and extract frames.
@@ -171,12 +130,33 @@ def sample_frames_from_video(frames: npt.NDArray,
     return sampled_frames
 
 
-def process_image_url(image_url):
+def process_image_url(image_url: str) -> "Image.Image":
+    """Process image URL and convert it to PIL Image.
+
+    This function handles three types of image inputs:
+    1. Base64 encoded image data URL
+    2. Local file path
+    3. HTTP/HTTPS URL
+
+    Args:
+        image_url: Image source, can be:
+            - Base64 data URL starting with "data:image/..."
+            - Local file path
+            - HTTP/HTTPS URL
+
+    Returns:
+        PIL.Image.Image: Processed image in RGB format
+    """
     if re.match(r"^data:image\/(png|jpg|jpeg|gif|bmp);base64,(.+)$", image_url):  # base64 image
+        # Decode base64 string and create a BytesIO object
         image_stream = io.BytesIO(base64.b64decode(
             image_url.split(",", maxsplit=1)[1]))
     elif os.path.isfile(image_url):  # local file
+        # Open local file in binary read mode
         image_stream = open(image_url, "rb")
     else:  # web uri
+        # Fetch image from URL with streaming enabled
         image_stream = requests.get(image_url, stream=True).raw
+    
+    # Open image stream and convert to RGB format
     return Image.open(image_stream).convert("RGB")
