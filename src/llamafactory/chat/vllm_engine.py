@@ -221,9 +221,7 @@ class VllmEngine(BaseEngine):
         if videos is not None:  # add video features
             multi_modal_data = {"video": []}
             for video in videos:
-                if isinstance(video, np.ndarray):
-                    multi_modal_data["video"].append(video)
-                elif isinstance(video, str):
+                if isinstance(video, str):
                     processed_video = process_video_url(video)
                     multi_modal_data["video"].append(processed_video)
                 else:
